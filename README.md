@@ -1,2 +1,2 @@
 # Linux-Interface
-the interface of linux is made myself for develop program
+这些封装的接口是根据长期开发总结完成的；平时的工作这些接口的使用频率比较高，同时这些接口都是经过了长期的测试
