@@ -51,17 +51,120 @@ bool xlm::Sec_sleep(int s)
 }
 bool xlm::Ms_sleep(int ms)
 {
-	if(ms>999)
+	if(ms<0||ms==0) return false;
+	struct timespec request;
+	if(clock_gettime(CLOCK_REALTIME,&request)==-1)
 	{
-		printf("the argument is overflow,please use Sec_sleep\n");
+		fprintf(stderr,"clock_gettime was failed:%s\n",strerror(errno));
 		return false;
 	}
-	struct timespec _t;
-	memset(&_t,0,sizeof(_t));
-	_t.tv_sec=0;
-	_t.tv_nsec=ms*1000000;
-	nanosleep(&_t,0);
-	return false;
+	long long temp=request.tv_nsec+ms*1000000;
+	if(temp>999999999)                                                 //注意进位处理
+	{
+		request.tv_sec+=temp/1000000000;
+		request.tv_nsec=temp%1000000000;
+	}
+	else
+	{
+		request.tv_nsec+=ms*1000000;
+	}
+	int s=clock_nanosleep(CLOCK_REALTIME,TIMER_ABSTIME,&request,NULL);
+	if(s!=0)
+	{
+		if(s==EINTR)
+			printf("Interrupted by signal handler\n");
+		else
+		{
+			printf("error\n");
+		}
+	}
+	return true;
+}
+DWORD  xlm::calcDifftime(DWORD EndTime,DWORD StartTime)
+{
+	if(EndTime>StartTime||EndTime==StartTime)
+	{
+		return (EndTime-StartTime);
+	}
+	else
+	{
+		return (0xffffffff-StartTime+EndTime+1);
+	}
+}
+struct timespec xlm::diffTime(struct timespec start,struct timespec end)
+{
+	struct timespec temp;
+	memset(&temp,0,sizeof(struct timespec));
+	if((end.tv_nsec-start.tv_nsec)<0)
+	{
+		temp.tv_sec=end.tv_sec-start.tv_sec-1;                      //减去1借位
+		temp.tv_nsec=1000000000+end.tv_nsec-start.tv_nsec;
+	}
+	else
+	{
+		temp.tv_sec=end.tv_sec-start.tv_sec;
+		temp.tv_nsec=end.tv_nsec-start.tv_nsec;
+	}
+	return temp;
+}
+struct timeval  xlm::diffTime_u(struct timeval start,struct timeval end)
+{
+	struct timeval temp;
+	memset(&temp,0,sizeof(struct timeval));
+	if((end.tv_usec-start.tv_usec)<0)
+	{
+		temp.tv_sec=end.tv_sec-start.tv_sec-1;
+		temp.tv_usec=1000000+end.tv_usec-start.tv_usec;
+	}
+	else
+	{
+		temp.tv_sec=end.tv_sec-start.tv_sec;
+		temp.tv_usec=end.tv_usec-start.tv_usec;
+	}
+	return temp;
+}
+
+unsigned long long xlm::get_cycles()                                    //获取cpu周期数
+{
+	unsigned low,high;
+	unsigned long long val;
+	rdtsc(low,high);
+	val=high;
+	val=(val<<32)|low; /*将low and high合并成一个64位值*/
+	return val;
+}
+double xlm::get_cpu_mhz(void)                                           //获取cpu频率为3.1MHz说明1s的时间会发生3.1*100 0000cycle,即1个cycle占用1/3.1MHz s即 1个cycle 占用 1/3.1us
+{
+	FILE* file=NULL;   /*单位为MHZ=周期/秒=周期*1000/毫秒*/
+	char buf[2048];
+	double mhz = 0.0;
+	char *p = NULL;
+	file = fopen("/proc/cpuinfo","r"); //打开 proc/cpuinfo 文件
+	if (!file)
+		return 0.0;
+	while(fgets(buf, sizeof(buf), file))
+	{
+		float m;
+		int rc;
+		p = strstr(buf,"cpu MHz");
+		if(NULL == p)
+		{
+			memset(buf,0,2048);
+			continue;
+		}
+		p = p + sizeof("cpu MHz  :");
+		*(p + 8) = '\0';
+		rc = sscanf(p,"%f",&m);
+		if(rc ==0)
+			continue;
+		if (mhz == 0.0)
+		{
+			mhz = m;
+			break;
+		}
+	}
+	fclose(file);
+	return mhz; //返回 HZ 值
 }
 int xlm::Rand_value()
 {
